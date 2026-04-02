@@ -1,8 +1,12 @@
-# Dell Precision 3551 ALPS Touchpad — phantom cursor movement fix
+# Dell Precision 3551 ALPS Touchpad — cursor jitter/zoom fix
 # Vendor 0x0488 Product 0x121F over I2C
-# The ALPS firmware reports ghost touches at low pressure, causing
-# the cursor to drift on its own. Raise the pressure range floor
-# and palm threshold to filter out the noise.
+#
+# This touchpad has no pressure axis and very low resolution (12 units/mm).
+# The size hint tells libinput the real physical dimensions so acceleration
+# is calculated correctly instead of overreacting to small movements.
+#
+# Pair with the udev hwdb fuzz rule (99-touchpad-fuzz.hwdb) which filters
+# micro-jitter at the kernel input layer.
 
 [Dell Precision 3551 Touchpad]
 MatchBus=i2c
@@ -10,6 +14,4 @@ MatchVendor=0x0488
 MatchProduct=0x121F
 MatchDMIModalias=dmi:*svnDellInc.:pnPrecision3551*
 MatchUdevType=touchpad
-AttrPressureRange=25:10
-AttrPalmPressureThreshold=200
-ModelTouchpadPhantomClicks=1
+AttrSizeHint=100x55

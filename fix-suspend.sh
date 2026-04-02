@@ -9,7 +9,7 @@
 #   4. Configures suspend-then-hibernate (suspends, then hibernates after 60min)
 #   5. Disables spurious ACPI wake sources (XHC/USB, PCI, ethernet)
 #   6. Disables GPE6E storm (known Dell ACPI bug — thousands of spurious interrupts)
-#   7. Fixes ALPS touchpad phantom cursor drift via libinput quirk
+#   7. Fixes ALPS touchpad jitter/zoom via udev hwdb fuzz + libinput size hint
 #   8. Ensures nvidia suspend/resume services are correct
 #   9. Rebuilds initramfs so hibernate resume actually works
 #
@@ -213,13 +213,38 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Fix ALPS touchpad phantom cursor drift
+# 7. Fix ALPS touchpad jitter, cursor zoom, and phantom clicks
 # ---------------------------------------------------------------------------
-step "Fixing ALPS touchpad phantom cursor movement"
+step "Fixing ALPS touchpad behavior"
 
-# The ALPS I2C touchpad (0488:121F) on the Precision 3551 reports ghost
-# touches at low pressure values, causing the cursor to drift on its own.
-# Install a libinput quirks file to raise pressure thresholds.
+# The ALPS I2C touchpad (0488:121F) on the Precision 3551 has no pressure
+# axis and very low resolution (12 units/mm). This causes:
+#   - Cursor "zooming off" from acceleration overreacting to jittery coords
+#   - Random clicks from tap-to-click firing on accidental brushes
+#
+# Fix 1: Add fuzz to X/Y axes via udev hwdb — filters micro-jitter at the
+#         kernel input layer before libinput ever sees it
+# Fix 2: Set proper size hint so libinput calculates acceleration correctly
+#         (the touchpad reports 12 u/mm but the actual pad is ~100x55mm)
+
+# --- udev hwdb: add fuzz to filter jitter ---
+HWDB_FILE="/etc/udev/hwdb.d/99-touchpad-fuzz.hwdb"
+cat > "$HWDB_FILE" <<'EOF'
+# Dell Precision 3551 ALPS I2C Touchpad (0488:121F)
+# Add fuzz to X/Y axes to filter jitter that causes cursor zoom/drift
+evdev:name:DELL09C2:00 0488:121F Touchpad:*
+ EVDEV_ABS_00=::+4
+ EVDEV_ABS_01=::+4
+ EVDEV_ABS_35=::+4
+ EVDEV_ABS_36=::+4
+EOF
+info "Udev hwdb fuzz rule written to ${HWDB_FILE}"
+
+systemd-hwdb update
+udevadm trigger /dev/input/event5 2>/dev/null || udevadm trigger
+info "Hwdb updated and udev triggered"
+
+# --- libinput quirk: size hint for correct acceleration ---
 QUIRKS_DIR="/etc/libinput"
 QUIRKS_FILE="${QUIRKS_DIR}/local-overrides.quirks"
 QUIRKS_ENTRY="[Dell Precision 3551 Touchpad]
@@ -228,18 +253,16 @@ MatchVendor=0x0488
 MatchProduct=0x121F
 MatchDMIModalias=dmi:*svnDellInc.:pnPrecision3551*
 MatchUdevType=touchpad
-AttrPressureRange=25:10
-AttrPalmPressureThreshold=200
-ModelTouchpadPhantomClicks=1"
+AttrSizeHint=100x55"
 
 mkdir -p "$QUIRKS_DIR"
-if [[ -f "$QUIRKS_FILE" ]] && grep -q "Precision 3551 Touchpad" "$QUIRKS_FILE"; then
-    info "Touchpad quirk already installed"
-else
-    echo "" >> "$QUIRKS_FILE"
-    echo "$QUIRKS_ENTRY" >> "$QUIRKS_FILE"
-    info "Touchpad quirk installed to ${QUIRKS_FILE}"
+# Remove old entry if present, then write new one
+if [[ -f "$QUIRKS_FILE" ]]; then
+    sed -i '/\[Dell Precision 3551 Touchpad\]/,/^$/d' "$QUIRKS_FILE"
 fi
+echo "" >> "$QUIRKS_FILE"
+echo "$QUIRKS_ENTRY" >> "$QUIRKS_FILE"
+info "Libinput size hint quirk installed to ${QUIRKS_FILE}"
 
 # ---------------------------------------------------------------------------
 # 8. Apply what we can immediately (without reboot)
