@@ -13,6 +13,7 @@ Out of the box, this laptop uses s2idle (modern standby) which drains the batter
 | Battery dies if left suspended | Lid close triggers suspend-then-hibernate (hibernates after 60 min) |
 | Hibernate resume doesn't work | Configures GRUB `resume=` / `resume_offset=` for swap file + initramfs |
 | GPE6E interrupt storm (~15k/min) | Detects and disables runaway ACPI GPEs on boot |
+| Touchpad cursor drifts on its own | Libinput quirk raises ALPS pressure thresholds to filter ghost touches |
 | Nvidia GPU glitches on resume | Ensures VRAM preservation and nvidia suspend/resume services |
 | Missing hardware support | Installs the Ubuntu HWE kernel |
 
@@ -31,6 +32,7 @@ Then reboot.
 - `/etc/systemd/sleep.conf.d/99-fix-suspend.conf` — enables suspend-then-hibernate
 - `/etc/systemd/logind.conf.d/99-fix-suspend.conf` — lid/power button behavior
 - `/etc/systemd/system/fix-suspend-wakeup.service` — disables wake sources and GPE storms on boot
+- `/etc/libinput/local-overrides.quirks` — ALPS touchpad pressure thresholds for phantom drift
 - Enables `nvidia-suspend`, `nvidia-hibernate`, `nvidia-resume` systemd services
 - Rebuilds GRUB and initramfs
 

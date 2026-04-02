@@ -9,8 +9,9 @@
 #   4. Configures suspend-then-hibernate (suspends, then hibernates after 60min)
 #   5. Disables spurious ACPI wake sources (XHC/USB, PCI, ethernet)
 #   6. Disables GPE6E storm (known Dell ACPI bug — thousands of spurious interrupts)
-#   7. Ensures nvidia suspend/resume services are correct
-#   8. Rebuilds initramfs so hibernate resume actually works
+#   7. Fixes ALPS touchpad phantom cursor drift via libinput quirk
+#   8. Ensures nvidia suspend/resume services are correct
+#   9. Rebuilds initramfs so hibernate resume actually works
 #
 # Run: sudo bash fix-suspend.sh
 # After: reboot for all changes to take effect
@@ -212,7 +213,36 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Apply what we can immediately (without reboot)
+# 7. Fix ALPS touchpad phantom cursor drift
+# ---------------------------------------------------------------------------
+step "Fixing ALPS touchpad phantom cursor movement"
+
+# The ALPS I2C touchpad (0488:121F) on the Precision 3551 reports ghost
+# touches at low pressure values, causing the cursor to drift on its own.
+# Install a libinput quirks file to raise pressure thresholds.
+QUIRKS_DIR="/etc/libinput"
+QUIRKS_FILE="${QUIRKS_DIR}/local-overrides.quirks"
+QUIRKS_ENTRY="[Dell Precision 3551 Touchpad]
+MatchBus=i2c
+MatchVendor=0x0488
+MatchProduct=0x121F
+MatchDMIModalias=dmi:*svnDellInc.:pnPrecision3551*
+MatchUdevType=touchpad
+AttrPressureRange=25:10
+AttrPalmPressureThreshold=200
+ModelTouchpadPhantomClicks=1"
+
+mkdir -p "$QUIRKS_DIR"
+if [[ -f "$QUIRKS_FILE" ]] && grep -q "Precision 3551 Touchpad" "$QUIRKS_FILE"; then
+    info "Touchpad quirk already installed"
+else
+    echo "" >> "$QUIRKS_FILE"
+    echo "$QUIRKS_ENTRY" >> "$QUIRKS_FILE"
+    info "Touchpad quirk installed to ${QUIRKS_FILE}"
+fi
+
+# ---------------------------------------------------------------------------
+# 8. Apply what we can immediately (without reboot)
 # ---------------------------------------------------------------------------
 step "Applying immediate changes (full effect after reboot)"
 
@@ -256,6 +286,7 @@ echo "  Lid close:       suspend-then-hibernate (60min)"
 echo "  Power button:    suspend-then-hibernate (60min)"
 echo "  Wake sources:    XHC, GLAN, PCI bridges disabled"
 echo "  GPE storm:       runaway GPEs disabled"
+echo "  Touchpad:        phantom drift fixed (pressure quirk)"
 echo "  Nvidia:          VRAM preserved across suspend"
 echo "  Hibernate:       resume from /swap.img (GRUB + initramfs)"
 echo ""
