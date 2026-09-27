@@ -72,3 +72,7 @@ sudo systemctl daemon-reload
 sudo update-initramfs -u -k all
 sudo reboot
 ```
+
+## License
+
+AGPL-3.0-or-later © 2026 Jeffrey Pine Hein. See [LICENSE](LICENSE).
